@@ -3,11 +3,14 @@
 try:
     import rclpy
     import subprocess
+    import cv2
+    from PIL import Image as PILImage
     from rclpy.node import Node
     from nav_msgs.msg import Path
     from sensor_msgs.msg import Image, CameraInfo
     from nav_msgs.msg import Odometry
     from cv_bridge import CvBridge
+    from habitat_sim.utils.common import d3_40_colors_rgb
     import numpy as np
 
     class ROSDataCollector(Node):
@@ -20,6 +23,8 @@ try:
                 # Initialize ROS publishers
                 self.rgb_pub = self.create_publisher(Image, '/camera/rgb/image_raw', 10)
                 self.depth_pub = self.create_publisher(Image, '/camera/depth/image_raw', 10)
+                self.semantic_pub = self.create_publisher(Image, '/camera/semantic/image_raw', 10)
+                self.semantic_rgb_pub = self.create_publisher(Image, '/camera/semantic_rgb/image_raw', 10)
                 self.pose_pub = self.create_publisher(Odometry, '/camera/pose', 10)
                 self.camera_info_pub = self.create_publisher(CameraInfo, 'camera_info', 10)
 
@@ -38,6 +43,22 @@ try:
                 ros_depth = self.bridge.cv2_to_imgmsg(depth_img_processed, encoding="16UC1")
                 ros_depth.header.stamp = self.get_clock().now().to_msg()
                 self.depth_pub.publish(ros_depth)
+
+        def publish_semantic(self, semantic_obs):
+            if self.ros_enabled:
+                semantic_img = PILImage.new("P", (semantic_obs.shape[1], semantic_obs.shape[0]))
+                semantic_img.putpalette(d3_40_colors_rgb.flatten())
+                semantic_img.putdata((semantic_obs.flatten() % 40).astype(np.uint8))
+                semantic_img = semantic_img.convert("RGB")
+                semantic_img_cv = np.array(semantic_img)
+                semantic_img_cv = cv2.cvtColor(semantic_img_cv, cv2.COLOR_RGB2BGR)
+                ros_semantic = self.bridge.cv2_to_imgmsg(semantic_img_cv, encoding="bgr8")
+                ros_semantic.header.stamp = self.get_clock().now().to_msg()
+                self.semantic_rgb_pub.publish(ros_semantic)
+                ros_semantic_label = self.bridge.cv2_to_imgmsg(semantic_obs.astype(np.uint8), encoding="mono8")
+                print(semantic_obs)
+                ros_semantic_label.header.stamp = self.get_clock().now().to_msg()
+                self.semantic_pub.publish(ros_semantic_label)
 
         def publish_pose(self, pose):
             if self.ros_enabled:
@@ -192,7 +213,8 @@ try:
         :param output_path: Path to save the rosbag file.
         """
 
-        topics_to_record = ['/camera/rgb/image_raw', '/camera/depth/image_raw', '/camera/pose', '/camera_info']
+        topics_to_record = ['/camera/rgb/image_raw', '/camera/depth/image_raw', 
+        '/camera/semantic_rgb/image_raw', '/camera/semantic/image_raw', '/camera/pose', '/camera_info']
 
         # Prepare the command for recording
         command = ['ros2', 'bag', 'record', '-o', output_path] + topics_to_record

@@ -72,15 +72,9 @@ def main(cfg: DictConfig) -> None:
         f"House has {len(scene.levels)} levels, {len(scene.regions)} regions and {len(scene.objects)} objects"
     )
 
-    # Get all objects in the scene and create a dictionary for mapping object to class
-    # obj2cls = None
-    # if cfg.data_cfg.semantic:
-    #     obj2cls = {int(obj.id.split("_")[-1]): (obj.category.index(), obj.category.name()) for obj in scene.objects}
-
-    # print(obj2cls)
-
-    # print all the info of the scene
-    # print_scene_objects_info(scene)
+    object_id_to_class_id = {int(obj.id.split("_")[-1]): obj.category.index() for obj in scene.objects}
+    # convert values to uint32
+    object_id_to_class_id = {k: np.uint32(v) for k, v in object_id_to_class_id.items()}
 
     # save the scene information into the output folder
     save_scene_object_info(scene, scene_dir)
@@ -257,11 +251,14 @@ def main(cfg: DictConfig) -> None:
         if data_collector:
             rgb_img = np.array(obs["color_sensor"])
             depth_img = np.array(obs["depth_sensor"])
+            semantic_img = np.array(obs["semantic_sensor"])
+            semantic_img = np.vectorize(object_id_to_class_id.get)(semantic_img)
             fx, fy, cx, cy, width, height = get_camera_intrinsics(sim, "color_sensor")
             pose = get_agent_pose(agent)
 
             data_collector.publish_rgb(rgb_img)
             data_collector.publish_depth(depth_img)
+            data_collector.publish_semantic(semantic_img)
             data_collector.publish_pose(pose)
             data_collector.publish_camera_info(fx, fy, cx, cy, width, height)
 
@@ -344,7 +341,7 @@ def main(cfg: DictConfig) -> None:
 
                     # ROS2 bag
                     if cfg.record_rosbag:
-                        rosbag_output_path = scene_dir / "rosbag2"
+                        rosbag_output_path = scene_dir / f"rosbag2_{int(time.time())}"
                         print(f"Start ROS bag recording: {rosbag_output_path}")
                         rosbag_process = start_rosbag_recording(rosbag_output_path)
                 else:
