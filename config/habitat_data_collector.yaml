@@ -41,7 +41,7 @@ data_cfg:
   resolution:
     w: 1200
     h: 680
-  camera_height: 1.5
+  camera_height: 0.5
 
 # Agent Movement
 movement_cfg:
